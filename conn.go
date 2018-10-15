@@ -108,6 +108,7 @@ func DialTimeout(url string, timeout time.Duration) (net.Conn, error) {
 			return nil, err
 		}
 	case <-time.NewTimer(timeout).C:
+		ws.Close()
 		return nil, errors.New("timeout connecting")
 	}
 
