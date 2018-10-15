@@ -6,15 +6,20 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"strconv"
 	"time"
 
 	"github.com/gopherjs/gopherjs/js"
-	"github.com/gopherjs/websocket"
-	"github.com/gopherjs/websocket/websocketjs"
+	"github.com/nayarsystems/websocket"
+	"github.com/nayarsystems/websocket/websocketjs"
 	"github.com/rusco/qunit"
 )
 
 func getWSBaseURL() string {
+	return getWSBaseURLWithPortInc(0)
+}
+
+func getWSBaseURLWithPortInc(portInc int) string {
 	document := js.Global.Get("window").Get("document")
 	location := document.Get("location")
 
@@ -23,7 +28,13 @@ func getWSBaseURL() string {
 		wsProtocol = "wss"
 	}
 
-	return fmt.Sprintf("%s://%s:%s/ws/", wsProtocol, location.Get("hostname"), location.Get("port"))
+	portSt := location.Get("port")
+	port, err := strconv.Atoi(portSt.String())
+	if err != nil {
+		panic("port should be a number")
+	}
+
+	return fmt.Sprintf("%s://%s:%d/ws/", wsProtocol, location.Get("hostname"), port+portInc)
 }
 
 func main() {
@@ -159,7 +170,7 @@ func main() {
 
 		return nil
 	})
-	qunit.AsyncTest("Timeout", func() interface{} {
+	qunit.AsyncTest("Timeout reading", func() interface{} {
 		qunit.Expect(2)
 
 		go func() {
@@ -188,6 +199,35 @@ func main() {
 				qunit.Ok(false, fmt.Sprintf("Unexpected error in read: %s", err))
 			} else {
 				qunit.Ok(false, "Expected timeout in read, got no error")
+			}
+		}()
+
+		return nil
+	})
+	qunit.AsyncTest("Timeout connecting", func() interface{} {
+		qunit.Expect(3)
+
+		go func() {
+			defer qunit.Start()
+
+			chOk := make(chan struct{})
+			go func() {
+				timeout := 5 * time.Millisecond
+
+				start := time.Now()
+				_, err := websocket.DialTimeout(getWSBaseURLWithPortInc(1), timeout)
+				end := time.Now()
+
+				qunit.Ok(err != nil, "Should have returned error")
+				qunit.Ok(err.Error() == "timeout connecting", "Should have returned right error message")
+				qunit.Ok(end.After(start.Add(timeout)), "Should have waited specified timeout")
+				close(chOk)
+			}()
+
+			select {
+			case <-chOk:
+			case <-time.NewTimer(time.Second).C:
+				qunit.Ok(false, "DialTimeout has not timed out")
 			}
 		}()
 

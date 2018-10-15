@@ -6,6 +6,7 @@ package websocket
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -59,12 +60,15 @@ func (e *deadlineErr) Temporary() bool { return true }
 
 var errDeadlineReached = &deadlineErr{}
 
-// TODO(nightexcessive): Add a Dial function that allows a deadline to be
-// specified.
-
 // Dial opens a new WebSocket connection. It will block until the connection is
 // established or fails to connect.
 func Dial(url string) (net.Conn, error) {
+	return DialTimeout(url, 60*time.Second)
+}
+
+// DialTimeout opens a new WebSocket connection. It will block until the connection is
+// established or fails to connect or timeout expires.
+func DialTimeout(url string, timeout time.Duration) (net.Conn, error) {
 	ws, err := websocketjs.New(url)
 	if err != nil {
 		return nil, err
@@ -98,9 +102,13 @@ func Dial(url string) (net.Conn, error) {
 	ws.AddEventListener("open", false, openHandler)
 	ws.AddEventListener("close", false, closeHandler)
 
-	err, ok := <-openCh
-	if ok && err != nil {
-		return nil, err
+	select {
+	case err, ok := <-openCh:
+		if ok && err != nil {
+			return nil, err
+		}
+	case <-time.NewTimer(timeout).C:
+		return nil, errors.New("timeout connecting")
 	}
 
 	return conn, nil

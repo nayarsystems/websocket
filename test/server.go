@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net"
 	"net/http"
 	"time"
 
@@ -29,6 +30,12 @@ func main() {
 	http.Handle("/ws/wait-30s", websocket.Handler(func(ws *websocket.Conn) {
 		<-time.After(30 * time.Second)
 	}))
+
+	go func() {
+		if _, err := net.Listen("tcp4", ":3001"); err != nil {
+			panic(err)
+		}
+	}()
 
 	err := http.ListenAndServe(":3000", nil)
 	if err != nil {
